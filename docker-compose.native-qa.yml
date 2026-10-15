@@ -1,0 +1,24 @@
+services:
+  native-qa:
+    build:
+      context: ./apps/server
+      args:
+        FEATURES: sqlite,native
+    ports:
+      - "127.0.0.1:${NATIVE_QA_PORT:-8089}:8080"
+    environment:
+      DATABASE_URL: sqlite:///data/rustrak.db
+      NATIVE_STORAGE_PATH: /data/native
+      INGEST_DIR: /data/ingest
+      SOURCEMAP_STORAGE_PATH: /data/sourcemaps
+      PUBLIC_URL: http://localhost:${NATIVE_QA_PORT:-8089}
+      SESSION_SECRET_KEY: ${NATIVE_QA_SESSION_SECRET:?Set a separate QA session secret}
+      CREATE_SUPERUSER: ${NATIVE_QA_SUPERUSER:?Set separate QA email:password credentials}
+      RUSTRAK_TELEMETRY: "off"
+    volumes:
+      - native_qa_data:/data
+    mem_limit: 6g
+    pids_limit: 256
+
+volumes:
+  native_qa_data:

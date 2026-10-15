@@ -57,3 +57,4 @@ react-doctor-report.json
 # Storybook static builds
 storybook-static/
 /.idea
+/.qa/
