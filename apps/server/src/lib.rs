@@ -17,6 +17,7 @@ pub mod native;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 pub mod pagination;
+pub mod project_import;
 pub mod routes;
 pub mod services;
 pub mod telemetry;

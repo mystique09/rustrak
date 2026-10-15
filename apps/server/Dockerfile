@@ -64,4 +64,5 @@ COPY --chown=65532:65532 --from=builder /data /data
 VOLUME /data
 EXPOSE 8080
 USER nonroot
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 CMD ["/app/rustrak", "--healthcheck"]
 CMD ["/app/rustrak"]

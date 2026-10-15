@@ -43,6 +43,57 @@ async fn main() -> std::io::Result<()> {
     // Load .env file if present
     dotenvy::dotenv().ok();
 
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--healthcheck")) {
+        if std::env::args_os().len() != 2 {
+            return Err(std::io::Error::other("Usage: rustrak --healthcheck"));
+        }
+        let port: u16 = std::env::var("PORT")
+            .unwrap_or_else(|_| "8080".into())
+            .parse()
+            .map_err(std::io::Error::other)?;
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .map_err(std::io::Error::other)?;
+        let response = client
+            .get(format!("http://127.0.0.1:{port}/health/ready"))
+            .send()
+            .await
+            .map_err(std::io::Error::other)?
+            .error_for_status()
+            .map_err(std::io::Error::other)?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(std::io::Error::other)?;
+        if response["status"] != "ready" || response["checks"]["database"] != "ok" {
+            return Err(std::io::Error::other("Server is not ready"));
+        }
+        return Ok(());
+    }
+
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--import-projects")) {
+        let paths: Vec<_> = std::env::args_os().skip(2).collect();
+        if paths.len() != 1 {
+            return Err(std::io::Error::other(
+                "Usage: rustrak --import-projects <manifest.json>",
+            ));
+        }
+        let database = config::DatabaseConfig::from_env().map_err(std::io::Error::other)?;
+        let pool = db::create_pool(&database)
+            .await
+            .map_err(std::io::Error::other)?;
+        db::run_migrations(&pool)
+            .await
+            .map_err(std::io::Error::other)?;
+        let count = rustrak::project_import::import_file(&pool, std::path::Path::new(&paths[0]))
+            .await
+            .map_err(std::io::Error::other)?;
+        println!("Imported {count} projects; existing matching identities preserved");
+        return Ok(());
+    }
+
     // Initialize logging. RUSTRAK_LOG_TIMEZONE (IANA name)
     // optionally converts log timestamps for display; falls back to UTC if unset
     // or unrecognized. Display-only — event/issue timestamps are unaffected.
@@ -140,6 +191,13 @@ async fn main() -> std::io::Result<()> {
         log::error!("Migration error: {}", e);
         std::io::Error::other(e.to_string())
     })?;
+
+    if let Some(path) = std::env::var_os("PROJECT_IMPORT_FILE") {
+        let count = rustrak::project_import::import_file(&db_pool, std::path::Path::new(&path))
+            .await
+            .map_err(std::io::Error::other)?;
+        log::info!("Imported {count} projects; existing matching identities preserved");
+    }
 
     // Create source map store and provider
     let sourcemap_store: Arc<dyn rustrak::services::sourcemap_store::SourceMapStore> =

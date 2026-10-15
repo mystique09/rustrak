@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--client", required=True, type=Path)
     parser.add_argument("--sentry-cli", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--project-manifest", type=Path)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="native-", dir=args.output.resolve()))
@@ -37,6 +38,9 @@ def main():
                        CREATE_SUPERUSER=f"qa@example.invalid:{password}",
                        RUSTRAK_DASHBOARD="off", RUSTRAK_TELEMETRY="off", RUST_LOG="warn")
     environment.pop("RUSTRAK_BOOTSTRAP_TOKEN", None)
+    environment.pop("PROJECT_IMPORT_FILE", None)
+    if args.project_manifest:
+        environment["PROJECT_IMPORT_FILE"] = str(args.project_manifest.resolve())
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     token = None
     symbol_paths = [client_binary]
@@ -66,9 +70,17 @@ def main():
                         raise
                     time.sleep(0.2)
             token = request("/api/tokens", {"description": "Disposable native QA"})["token"]
-            project = request("/api/projects", {"name": "Native QA", "slug": "native-qa", "platform": "native"})
+            subprocess.run([str(server_binary), "--healthcheck"], cwd=root, env=environment,
+                           check=True, creationflags=flags, timeout=10)
+            if args.project_manifest:
+                identity = json.loads(args.project_manifest.read_text())["projects"][0]
+                project = request(f"/api/projects/{identity['id']}")
+                assert identity["sentry_key"] in project["dsn"].replace("-", ""), project
+                assert project["slug"] == identity["slug"], project
+            else:
+                project = request("/api/projects", {"name": "Native QA", "slug": "native-qa", "platform": "native"})
             upload_env = dict(environment, SENTRY_URL=base, SENTRY_AUTH_TOKEN=token,
-                              SENTRY_ORG="qa", SENTRY_PROJECT="native-qa")
+                              SENTRY_ORG="qa", SENTRY_PROJECT=project["slug"])
             upload_env.pop("SENTRY_DSN", None)
             if platform.system() == "Windows":
                 symbol_paths.append(client_binary.with_name(client_binary.stem.replace("-", "_") + ".pdb"))
@@ -81,7 +93,7 @@ def main():
                 subprocess.run(command + [str(path) for path in symbol_paths], cwd=root,
                                env=upload_env, stdout=upload_log, stderr=subprocess.STDOUT,
                                creationflags=flags, timeout=300, check=True)
-            files = request("/api/0/projects/qa/native-qa/files/difs/")
+            files = request(f"/api/0/projects/qa/{project['slug']}/files/difs/")
             assert any("debug" in file["features"] for file in files), files
             assert any("sources" in file["features"] for file in files), "Source bundle was not uploaded"
             crash_env = dict(environment, SENTRY_DSN=project["dsn"], NATIVE_SMOKE_DIR=str(root / "crashes"))

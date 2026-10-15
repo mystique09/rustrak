@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "id": 1,
+      "name": "idate-encore-client",
+      "slug": "idate-encore-client",
+      "sentry_key": "168719e89a3d4871b01c2958e71ea683"
+    },
+    {
+      "id": 2,
+      "name": "rust",
+      "slug": "rust",
+      "sentry_key": "606cdf2848984d90b9f8989e74366dee"
+    }
+  ]
+}

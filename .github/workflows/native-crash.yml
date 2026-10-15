@@ -2,7 +2,7 @@ name: Native crash verification
 
 on:
   push:
-    branches: [codex/native-crash-symbols]
+    branches: [codex/native-crash-symbols, codex/rustrak-integration]
   workflow_dispatch:
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
           cache-workspaces: |
             apps/server
             tests/native-smoke
-      - run: cargo test --locked --features native --lib --test native_crash_test
+      - run: cargo test --locked --features native --lib --test native_crash_test --test project_import_test
         working-directory: apps/server
       - run: cargo clippy --locked --features native --lib --bin rustrak -- -D warnings
         working-directory: apps/server
@@ -55,7 +55,7 @@ jobs:
         shell: pwsh
         run: |
           $suffix = if ($IsWindows) { '.exe' } else { '' }
-          python scripts/verify-native.py --server "apps/server/target/debug/rustrak$suffix" --client "tests/native-smoke/target/debug/rustrak-native-smoke$suffix" --sentry-cli $env:NATIVE_CLI --output .qa/smoke
+          python scripts/verify-native.py --server "apps/server/target/debug/rustrak$suffix" --client "tests/native-smoke/target/debug/rustrak-native-smoke$suffix" --sentry-cli $env:NATIVE_CLI --output .qa/smoke --project-manifest tests/fixtures/idate-projects.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-Content .qa/smoke/native-summary.json | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
   postgres:
@@ -70,5 +70,5 @@ jobs:
         with:
           toolchain: '1.98'
           cache-workspaces: apps/server
-      - run: cargo test --locked --no-default-features --features postgres,native --test native_crash_test
+      - run: cargo test --locked --no-default-features --features postgres,native --test native_crash_test --test project_import_test
         working-directory: apps/server
