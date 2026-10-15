@@ -18,6 +18,12 @@
 
 </div>
 
+This fork's `codex/native-crash-symbols` branch adds optional native minidump
+processing and PDB, dSYM, ELF and Breakpad symbol uploads. See the
+[native operations guide](docs/native-crash-operations.md) and
+[verification evidence](docs/native-crash-verification.md). iDate production
+remains on GlitchTip while packaged-client and staging acceptance are pending.
+
 Rustrak is a self-hosted error tracker that also takes logs, transactions,
 release health and AI-agent traces.
 

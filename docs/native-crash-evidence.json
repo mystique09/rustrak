@@ -1,0 +1,171 @@
+{
+  "code_commit": "d4d378d6478148277bcb21de420491d56a40b903",
+  "ci_run": "https://github.com/mystique09/rustrak/actions/runs/38796926699",
+  "sdk_version": "0.49.3",
+  "sentry_cli_version": "3.8.0",
+  "symbolic_version": "14.0.0-alpha.4",
+  "local_server_suite": {
+    "passed": 1414,
+    "failed": 0,
+    "upstream_ignored": 56
+  },
+  "postgres_native_suite": {
+    "passed": 10,
+    "failed": 0
+  },
+  "platforms": {
+    "windows": {
+      "job_url": "https://github.com/mystique09/rustrak/actions/runs/38796926699/job/116635657860",
+      "os": "Windows-2022Server-10.0.20348-SP0",
+      "architecture": "AMD64",
+      "server_sha256": "c013dd4ba4a62a0b4ad117d3a7896510cfee1c599312549a32bf8b4cc184c873",
+      "client_sha256": "2e8717cfa20ebf1e6c9286695746a3bf4bc88f119841642b9d4f1a2cae3068b8",
+      "client_exit": 3221225477,
+      "event_id": "8d6336c1608a40758ddbd780dbfe1d76",
+      "debug_formats": [
+        "pdb",
+        "pe",
+        "sourcebundle"
+      ],
+      "resolved_frames": [
+        {
+          "function": "rustrak_native_smoke::native_crash_middle()",
+          "filename": "D:\\a\\rustrak\\rustrak\\tests\\native-smoke\\src\\main.rs",
+          "lineno": 15,
+          "context_line": "    native_crash_leaf();",
+          "trust": "cfi"
+        },
+        {
+          "function": "rustrak_native_smoke::native_crash_leaf()",
+          "filename": "D:\\a\\rustrak\\rustrak\\tests\\native-smoke\\src\\main.rs",
+          "lineno": 9,
+          "context_line": "        std::ptr::write_volatile(address as *mut u8, 42);",
+          "trust": "cfi"
+        }
+      ],
+      "production_changed": false
+    },
+    "linux": {
+      "job_url": "https://github.com/mystique09/rustrak/actions/runs/38796926699/job/116635658039",
+      "os": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+      "architecture": "x86_64",
+      "server_sha256": "45bfaf9457dfe9ca3bcbb94ef8a8df593a01ed822642a3ebd401ac069528defe",
+      "client_sha256": "eb8f960a759f4956a5b4c25f633fa93f8174deb82877fc7b966e9bcaab630e26",
+      "client_exit": -11,
+      "event_id": "9d8bcf5a5c9144bca801157e80a828f8",
+      "debug_formats": [
+        "elf",
+        "sourcebundle"
+      ],
+      "resolved_frames": [
+        {
+          "function": "rustrak_native_smoke::native_crash_middle",
+          "filename": "/home/runner/work/rustrak/rustrak/tests/native-smoke/src/main.rs",
+          "lineno": 15,
+          "context_line": "    native_crash_leaf();",
+          "trust": "cfi"
+        },
+        {
+          "function": "rustrak_native_smoke::native_crash_leaf",
+          "filename": "/home/runner/work/rustrak/rustrak/tests/native-smoke/src/main.rs",
+          "lineno": 9,
+          "context_line": "        std::ptr::write_volatile(address as *mut u8, 42);",
+          "trust": "cfi"
+        }
+      ],
+      "production_changed": false
+    },
+    "macos_arm64": {
+      "job_url": "https://github.com/mystique09/rustrak/actions/runs/38796926699/job/116635657917",
+      "os": "macOS-15.7.9-arm64-arm-64bit-Mach-O",
+      "architecture": "arm64",
+      "server_sha256": "c69f5b3bad2713fd8f6c058874b901d68fd5c4b9edb283639f989376216f3766",
+      "client_sha256": "963c50e8a530652ea9c5ac79dd5486ebf702f9194a7672e8f5f3efe529a0818d",
+      "client_exit": -11,
+      "event_id": "6bc4fd8065ae4cfcb452edbacaee8b9a",
+      "debug_formats": [
+        "macho",
+        "sourcebundle"
+      ],
+      "resolved_frames": [
+        {
+          "function": "rustrak_native_smoke::native_crash_middle",
+          "filename": "/Users/runner/work/rustrak/rustrak/tests/native-smoke/src/main.rs",
+          "lineno": 15,
+          "context_line": "    native_crash_leaf();",
+          "trust": "cfi"
+        },
+        {
+          "function": "rustrak_native_smoke::native_crash_leaf",
+          "filename": "/Users/runner/work/rustrak/rustrak/tests/native-smoke/src/main.rs",
+          "lineno": 9,
+          "context_line": "        std::ptr::write_volatile(address as *mut u8, 42);",
+          "trust": "cfi"
+        }
+      ],
+      "production_changed": false
+    },
+    "macos_intel": {
+      "job_url": "https://github.com/mystique09/rustrak/actions/runs/38796926699/job/116635657874",
+      "os": "macOS-15.7.9-x86_64-i386-64bit-Mach-O",
+      "architecture": "x86_64",
+      "server_sha256": "69d0b8e3ad0dd559a9768d84d7096f04d98314288736592a86f475361b367b88",
+      "client_sha256": "1802d3d4f8c59b6105ff1524119e34d58da9741749dc5322e99481b1d3e1794e",
+      "client_exit": -11,
+      "event_id": "be75e31e588b418dabf28f431f6a6321",
+      "debug_formats": [
+        "macho",
+        "sourcebundle"
+      ],
+      "resolved_frames": [
+        {
+          "function": "rustrak_native_smoke::native_crash_middle",
+          "filename": "/Users/runner/work/rustrak/rustrak/tests/native-smoke/src/main.rs",
+          "lineno": 15,
+          "context_line": "    native_crash_leaf();",
+          "trust": "frame_pointer"
+        },
+        {
+          "function": "rustrak_native_smoke::native_crash_leaf",
+          "filename": "/Users/runner/work/rustrak/rustrak/tests/native-smoke/src/main.rs",
+          "lineno": 9,
+          "context_line": "        std::ptr::write_volatile(address as *mut u8, 42);",
+          "trust": "frame_pointer"
+        }
+      ],
+      "production_changed": false
+    }
+  },
+  "local_windows": {
+    "os": "Windows-11-10.0.22631-SP0",
+    "architecture": "AMD64",
+    "server_sha256": "9b15ab03dda29ef8f400b45191f2f7914782c7b2ddcf2d47e39d26d68380ddd3",
+    "client_sha256": "7515aa33dd7bd12d95c3719344f3e87b3241c662a56f3bbb8038b723b20fd0be",
+    "client_exit": 3221225477,
+    "event_id": "8347100a22b04f75b3d425c466210092",
+    "debug_formats": [
+      "pdb",
+      "pe",
+      "sourcebundle"
+    ],
+    "resolved_frames": [
+      {
+        "function": "rustrak_native_smoke::native_crash_middle()",
+        "filename": "F:\\Dev\\rustrak\\tests\\native-smoke\\src\\main.rs",
+        "lineno": 15,
+        "context_line": "    native_crash_leaf();",
+        "trust": "cfi"
+      },
+      {
+        "function": "rustrak_native_smoke::native_crash_leaf()",
+        "filename": "F:\\Dev\\rustrak\\tests\\native-smoke\\src\\main.rs",
+        "lineno": 9,
+        "context_line": "        std::ptr::write_volatile(address as *mut u8, 42);",
+        "trust": "cfi"
+      }
+    ],
+    "production_changed": false
+  },
+  "packaged_encore_acceptance": "pending",
+  "production_service": "GlitchTip"
+}

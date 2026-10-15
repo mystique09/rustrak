@@ -33,7 +33,7 @@
 - [x] Implement durable minidump envelope ingestion and asynchronous enrichment, with retry and metadata tests.
 - [x] Verify native debug formats, source context and stack walking against public/synthetic fixtures.
 - [x] Add fork-only verification workflow and operator documentation; record Windows/macOS/Linux evidence separately.
-- [ ] Run formatting, lint and relevant suites; review the complete diff; commit and push only to the fork branch.
+- [x] Run formatting, lint and relevant suites; review the complete diff; commit and push only to the fork branch.
 
 ## Progress
 
@@ -45,3 +45,6 @@
 - Windows 11 AMD64 smoke: a fresh native access violation, Sentry SDK 0.49.3, Sentry CLI 3.8.0, PE/PDB/source-bundle upload, resolved leaf/caller frames with source context, and preserved release/tags/breadcrumbs. This is synthetic server acceptance, not packaged Encore consent/UI acceptance.
 - Broad parallel tests exposed a pre-existing bootstrap environment-variable race; rerunning serially avoids the shared-environment interference without changing unrelated bootstrap code.
 - Production GlitchTip, Dokploy, hostname and iDate release workflows remain unchanged. Existing Windows uploads need the matching executable alongside the PDB for complete unwind data when staging Rustrak.
+- Final local suite: 1,414 passed, zero failures, 56 upstream skips; native Clippy and the default build pass. Native PostgreSQL CI passes all ten tests.
+- Native Windows, Linux, Apple Silicon and Intel macOS crashes pass fork CI, including caller frames, file/line and embedded source context. See `docs/native-crash-verification.md` and its machine-readable evidence for the tested commit and hashes.
+- Symbolic 13.9 failed on a public sparse Apple Silicon dSYM and on the CI-generated dSYM. Pinning 14.0.0-alpha.4 incorporates the upstream offset fix; the fixture and fresh Apple Silicon crash now pass.
