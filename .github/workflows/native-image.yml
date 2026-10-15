@@ -57,6 +57,8 @@ jobs:
           build-args: FEATURES=postgres,native
           load: true
           push: false
+          cache-from: type=gha,scope=native-staging
+          cache-to: type=gha,mode=max,scope=native-staging
           tags: rustrak-native:verify
           labels: |
             org.opencontainers.image.source=https://github.com/mystique09/rustrak

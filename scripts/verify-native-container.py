@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import socket
 import subprocess
 import tempfile
 import time
@@ -27,6 +28,10 @@ def main():
     network, database, server = [f"rustrak-native-{kind}-{suffix}" for kind in ["net", "db", "app"]]
     password = secrets.token_urlsafe(32)
     token = None
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    base = f"http://127.0.0.1:{port}"
     docker("network", "create", network)
     try:
         with tempfile.TemporaryDirectory(prefix="rustrak-container-") as temporary:
@@ -47,18 +52,17 @@ def main():
                 f"DATABASE_URL=postgres://postgres:{password}@{database}:5432/rustrak\n"
                 f"SESSION_SECRET_KEY={secrets.token_hex(64)}\n"
                 f"CREATE_SUPERUSER=qa@example.invalid:{password}\n"
+                f"PUBLIC_URL={base}\n"
                 "PROJECT_IMPORT_FILE=/run/projects.json\n"
                 "NATIVE_STORAGE_PATH=/data/native\nINGEST_DIR=/data/ingest\n"
                 "SOURCEMAP_STORAGE_PATH=/data/sourcemaps\n"
                 "RUSTRAK_TELEMETRY=off\nRUST_LOG=warn\n")
             environment.chmod(0o600)
             docker("run", "-d", "--name", server, "--network", network,
-                   "--memory", "6g", "--pids-limit", "256",
+                   "--memory", "2g", "--pids-limit", "256",
                    "--env-file", str(environment),
                    "--mount", f"type=bind,source={manifest},target=/run/projects.json,readonly",
-                   "-p", "127.0.0.1::8080", args.image)
-            port = json.loads(docker("inspect", server).stdout)[0]["NetworkSettings"]["Ports"]["8080/tcp"][0]["HostPort"]
-            base = f"http://127.0.0.1:{port}"
+                   "-p", f"127.0.0.1:{port}:8080", args.image)
             opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
             def request(path, value=None, payload=None, headers=None):
