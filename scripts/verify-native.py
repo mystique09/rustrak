@@ -39,6 +39,7 @@ def main():
     environment.pop("RUSTRAK_BOOTSTRAP_TOKEN", None)
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     token = None
+    symbol_paths = [client_binary]
 
     def request(path, data=None):
         headers = {"Content-Type": "application/json"}
@@ -69,7 +70,6 @@ def main():
             upload_env = dict(environment, SENTRY_URL=base, SENTRY_AUTH_TOKEN=token,
                               SENTRY_ORG="qa", SENTRY_PROJECT="native-qa")
             upload_env.pop("SENTRY_DSN", None)
-            symbol_paths = [client_binary]
             if platform.system() == "Windows":
                 symbol_paths.append(client_binary.with_name(client_binary.stem.replace("-", "_") + ".pdb"))
             elif platform.system() == "Darwin":
@@ -142,6 +142,21 @@ def main():
                     if token:
                         tail = tail.replace(token, "[redacted]")
                     print(f"{filename}:\n{tail}", flush=True)
+            candidates = []
+            for path in symbol_paths:
+                candidates.extend(path.glob("Contents/Resources/DWARF/*") if path.is_dir() else [path])
+            worker_env = {key: str(root) for key in ["TMP", "TEMP", "TMPDIR"]}
+            if "SYSTEMROOT" in os.environ:
+                worker_env["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+            for index, path in enumerate(candidates):
+                diagnostic = root / f"inspect-{index}.json"
+                diagnostic.write_text(json.dumps({"Inspect": {"input": str(path), "output": str(root / f"inspect-{index}")}}))
+                try:
+                    result = subprocess.run([str(server_binary), "--native-worker", str(diagnostic), str(root / f"result-{index}.json")],
+                                            cwd=root, env=worker_env, capture_output=True, timeout=65, creationflags=flags)
+                    print(f"Inspect {path.name}: exit {result.returncode}; {result.stderr.decode(errors='replace')[-4000:]}", flush=True)
+                except subprocess.TimeoutExpired:
+                    print(f"Inspect {path.name}: timeout", flush=True)
             raise
         finally:
             server.terminate()
