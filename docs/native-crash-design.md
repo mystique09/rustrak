@@ -8,7 +8,7 @@ The source behavior is iDate commit `e3e7846`, specifically
 `scripts/dockerfiles/glitchtip-native-stackwalk.py`,
 `glitchtip-native-envelope.patch`, `test_glitchtip_native_envelope.py` and
 `test_glitchtip_native_stacktrace.py`. The fork implements these behaviors in
-Rust using the same rust-minidump 0.27 stack-walking engine, plus Symbolic 13.9
+Rust using the same rust-minidump 0.27 stack-walking engine, plus Symbolic 14.0.0-alpha.4
 for native debug files, unwind data, inline frames and embedded source bundles.
 
 The ingest path will persist native attachments with their event before acknowledging the request. Native enrichment runs in the existing asynchronous digest pipeline before issue grouping. Uploaded symbols are project-scoped and indexed by debug ID and architecture. Native uploads use the Sentry debug-file chunk/assemble protocol so the existing release commands remain usable. Symbolic handles debug formats and source bundles; rust-minidump supplies stack walking. Processing limits prevent crash parsing from occupying request workers indefinitely.

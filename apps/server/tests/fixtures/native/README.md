@@ -5,6 +5,10 @@
 under the included `SYMBOLIC-LICENSE`. They exercise native debug formats and are
 independent of the minidump fixtures.
 
+`macos-arm64-sparse.dwarf` is the same repository's
+`macos/symbolic-1040/symbolic-1040.dSYM/Contents/Resources/DWARF/symbolic-1040`.
+It reproduces incorrect section offsets in sparse Apple Silicon dSYMs.
+
 The three `.dmp` files and two `.sym` files come from
 [rust-minidump](https://github.com/rust-minidump/rust-minidump/tree/8ff3defb6b9fdb6d36b39d564a069242cdfc32ac/testdata),
 under the included `MINIDUMP-LICENSE`. Windows uses `test.dmp` and its `test_app`

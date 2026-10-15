@@ -88,6 +88,15 @@ mod native {
     }
 
     #[test]
+    fn sparse_arm64_dsym_reads_unwind_data_at_its_file_offset() {
+        let directory = tempfile::tempdir().unwrap();
+        let symbols = inspect("macos-arm64-sparse.dwarf", directory.path());
+        assert_eq!(symbols[0].object.arch, "arm64");
+        let cfi = std::fs::read_to_string(directory.path().join("0.cfi")).unwrap();
+        assert!(cfi.contains("STACK CFI INIT 3ef8 58"));
+    }
+
+    #[test]
     fn pdb_age_is_part_of_the_symbol_identity() {
         assert_eq!(
             normalize_debug_id("3249D99D0C4049318610F4E4FB0B69361"),

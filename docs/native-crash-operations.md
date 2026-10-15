@@ -12,6 +12,11 @@ from `apps/server`. The default database is SQLite. For PostgreSQL use
 `--no-default-features --features postgres,native`. The existing Dockerfile
 accepts `--build-arg FEATURES=sqlite,native` or `postgres,native`.
 
+Symbolic is pinned to `14.0.0-alpha.4` because 13.9 misreads sparse dSYM
+section offsets. The [upstream fix](https://github.com/getsentry/symbolic/commit/54486a9661aa56b215022d9c9d9f712b51538697)
+is covered by a public Apple Silicon dSYM regression fixture here. This
+prerelease dependency is an additional reason to retain the staging gate.
+
 Set `NATIVE_STORAGE_PATH` to a persistent writable directory (default
 `/data/native`). Persist `INGEST_DIR` as well: accepted events and their
 minidumps share a durable spool record until the digest commits. Back up the
