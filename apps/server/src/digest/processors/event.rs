@@ -30,6 +30,8 @@ pub struct ErrorProcessor {
     ingest_dir: PathBuf,
     rate_limit_config: RateLimitConfig,
     sourcemap_provider: Arc<dyn SourceMapProvider>,
+    #[cfg(feature = "native")]
+    native: Option<Arc<crate::native::NativeService>>,
     in_flight: Arc<InFlightDigests>,
     /// The base of the issue links in alert notifications.
     pub(super) dashboard_url: String,
@@ -62,6 +64,8 @@ impl ErrorProcessor {
             ingest_dir,
             rate_limit_config,
             sourcemap_provider,
+            #[cfg(feature = "native")]
+            native: None,
             in_flight: Arc::new(InFlightDigests::default()),
             dashboard_url: "http://localhost:8080".to_string(),
             #[cfg(feature = "sqlite")]
@@ -71,6 +75,23 @@ impl ErrorProcessor {
 
     pub(crate) fn ingest_dir(&self) -> &Path {
         &self.ingest_dir
+    }
+
+    #[cfg(feature = "native")]
+    pub fn with_native(mut self, native: Arc<crate::native::NativeService>) -> Self {
+        self.native = Some(native);
+        self
+    }
+
+    pub fn native_enabled(&self) -> bool {
+        #[cfg(feature = "native")]
+        {
+            self.native.is_some()
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            false
+        }
     }
 
     /// The digests this processor's process currently owns.
@@ -127,6 +148,11 @@ impl ErrorProcessor {
         metadata: &EventMetadata,
         ctx: &ProcessorCtx,
     ) -> AppResult<Digested> {
+        #[cfg(feature = "native")]
+        let _native_slot = match &self.native {
+            Some(native) => Some(native.work_slot().await?),
+            None => None,
+        };
         let pool = &ctx.pool;
 
         // 0. Read the event before quota checks so cleanup can target the exact
@@ -142,6 +168,42 @@ impl ErrorProcessor {
         let mut event_data: serde_json::Value =
             serde_json::from_slice(&crate::ingest::parser::strip_nul_escapes(&event_bytes))
                 .map_err(|e| AppError::Internal(format!("{INVALID_EVENT_JSON_PREFIX}: {e}")))?;
+
+        #[cfg(feature = "native")]
+        if let Some(native) = &self.native {
+            let dump = crate::ingest::storage::read_minidump_for_project(
+                &self.ingest_dir,
+                metadata.project_id,
+                &metadata.event_id,
+            )
+            .await?;
+            if let Err(error) = native
+                .enrich(pool, metadata.project_id, &mut event_data, dump)
+                .await
+            {
+                if !matches!(
+                    error.kind(),
+                    AppError::Validation(_) | AppError::PayloadTooLarge(_)
+                ) {
+                    return Err(error);
+                }
+                log::warn!(
+                    "Native processing failed for project {} event {}: {}",
+                    metadata.project_id,
+                    metadata.event_id,
+                    error
+                );
+                if !event_data
+                    .get("errors")
+                    .is_some_and(serde_json::Value::is_array)
+                {
+                    event_data["errors"] = serde_json::json!([]);
+                }
+                if let Some(errors) = event_data["errors"].as_array_mut() {
+                    errors.push(serde_json::json!({"type":"native_processing_error","message":"Native processing failed; original event retained"}));
+                }
+            }
+        }
 
         // Relay's `TimestampProcessor`: an event from before 1970 is invalid,
         // and so is each breadcrumb from before 1970.

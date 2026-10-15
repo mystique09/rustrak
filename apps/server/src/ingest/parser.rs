@@ -138,6 +138,10 @@ impl EnvelopeParser {
         // "event" items get the relaxed abuse ceiling — see MAX_RAW_EVENT_SIZE.
         let max_size = if headers.item_type == "event" {
             MAX_RAW_EVENT_SIZE
+        } else if headers.item_type == "attachment"
+            && headers.attachment_type.as_deref() == Some("event.minidump")
+        {
+            20 * 1024 * 1024
         } else {
             MAX_ITEM_SIZE
         };
@@ -161,10 +165,13 @@ impl EnvelopeParser {
             // Read until newline
             self.read_line(max_size)?
         };
-        // Every item type is JSON except attachments, which are ignored.
-        let payload = match strip_nul_escapes(&payload) {
-            std::borrow::Cow::Borrowed(_) => payload,
-            std::borrow::Cow::Owned(clean) => Bytes::from(clean),
+        let payload = if headers.item_type == "attachment" {
+            payload
+        } else {
+            match strip_nul_escapes(&payload) {
+                std::borrow::Cow::Borrowed(_) => payload,
+                std::borrow::Cow::Owned(clean) => Bytes::from(clean),
+            }
         };
 
         Ok(Some(EnvelopeItemKind::from((headers, payload))))

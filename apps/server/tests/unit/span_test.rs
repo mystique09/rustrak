@@ -12,6 +12,7 @@ use rustrak::ingest::envelope::{EnvelopeItemKind, ItemHeaders};
 #[test]
 fn test_enum_dispatch_span_maps_to_span_kind() {
     let headers = ItemHeaders {
+        attachment_type: None,
         item_type: "span".into(),
         length: None,
         content_type: None,

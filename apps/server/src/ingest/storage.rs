@@ -28,6 +28,8 @@ struct PendingEventRecord {
     version: u8,
     metadata: EventMetadata,
     event_data: String,
+    #[serde(default)]
+    minidump: Option<String>,
 }
 
 /// Gets the legacy file path for an event_id.
@@ -75,6 +77,11 @@ fn validate_pending_record(
         return Err(AppError::Internal(
             "Invalid pending event record identity".to_string(),
         ));
+    }
+    if let Some(encoded) = &record.minidump {
+        STANDARD
+            .decode(encoded)
+            .map_err(|e| AppError::Internal(format!("Invalid pending minidump: {e}")))?;
     }
     STANDARD
         .decode(record.event_data)
@@ -160,6 +167,7 @@ fn write_pending_record(
     file: &mut std::fs::File,
     metadata: &EventMetadata,
     event_data: &[u8],
+    minidump: Option<&[u8]>,
 ) -> io::Result<()> {
     let metadata_bytes = serde_json::to_vec(metadata).map_err(io::Error::other)?;
     let mut writer = io::BufWriter::new(&mut *file);
@@ -174,7 +182,16 @@ fn write_pending_record(
         encode_base64_chunk(&payload[range], &mut encoded);
         writer.write_all(encoded.as_bytes())?;
     }
-    writer.write_all(br#""}"#)?;
+    writer.write_all(b"\"")?;
+    if let Some(dump) = minidump {
+        writer.write_all(br#","minidump":""#)?;
+        for range in base64_chunk_ranges(dump.len()) {
+            encode_base64_chunk(&dump[range], &mut encoded);
+            writer.write_all(encoded.as_bytes())?;
+        }
+        writer.write_all(b"\"")?;
+    }
+    writer.write_all(b"}")?;
     writer.flush()?;
     drop(writer);
     file.sync_all()
@@ -279,6 +296,7 @@ fn write_pending_record_atomically(
     project_id: i32,
     metadata: &EventMetadata,
     event_data: &[u8],
+    minidump: Option<&[u8]>,
 ) -> AppResult<()> {
     let file_name = path
         .file_name()
@@ -299,7 +317,7 @@ fn write_pending_record_atomically(
             )));
         }
     };
-    if let Err(e) = write_pending_record(&mut temporary_file, metadata, event_data) {
+    if let Err(e) = write_pending_record(&mut temporary_file, metadata, event_data, minidump) {
         let _ = std::fs::remove_file(&temporary_path);
         return Err(AppError::Internal(format!(
             "Failed to write temporary ingest file: {}",
@@ -317,7 +335,10 @@ pub async fn prepare_ingest_dir(base_dir: &Path) -> AppResult<()> {
         .map_err(|e| AppError::Internal(format!("Failed to create ingest directory: {}", e)))
 }
 
-fn sync_parent_directory(path: &Path) -> AppResult<()> {
+fn sync_parent_directory(_path: &Path) -> AppResult<()> {
+    #[cfg(unix)]
+    let path = _path;
+    #[cfg(unix)]
     if let Some(parent) = path.parent() {
         let directory = std::fs::File::open(parent)
             .map_err(|e| AppError::Internal(format!("Failed to open ingest directory: {}", e)))?;
@@ -392,6 +413,16 @@ pub async fn store_event_with_metadata(
     event_data: &[u8],
     metadata: &EventMetadata,
 ) -> AppResult<PathBuf> {
+    store_event_with_minidump(base_dir, event_id, event_data, metadata, None).await
+}
+
+pub async fn store_event_with_minidump(
+    base_dir: &Path,
+    event_id: &str,
+    event_data: &[u8],
+    metadata: &EventMetadata,
+    minidump: Option<&[u8]>,
+) -> AppResult<PathBuf> {
     if !same_event_id(&metadata.event_id, event_id) {
         return Err(AppError::Validation(
             "Event metadata does not match event_id".to_string(),
@@ -403,6 +434,7 @@ pub async fn store_event_with_metadata(
     let event_id = event_id.to_string();
     let metadata = metadata.clone();
     let event_data = event_data.to_vec();
+    let minidump = minidump.map(<[u8]>::to_vec);
     on_blocking_pool("event store", move || {
         // The directory was created at startup (`prepare_ingest_dir`); the
         // retry below covers it disappearing since. Creating it again on
@@ -413,6 +445,7 @@ pub async fn store_event_with_metadata(
             metadata.project_id,
             &metadata,
             &event_data,
+            minidump.as_deref(),
         ) {
             Ok(()) => Ok(()),
             Err(_error)
@@ -432,6 +465,7 @@ pub async fn store_event_with_metadata(
                     metadata.project_id,
                     &metadata,
                     &event_data,
+                    minidump.as_deref(),
                 )
             }
             Err(error) => Err(error),
@@ -517,6 +551,35 @@ pub async fn read_event_for_project(
     Ok(read_event_with_location(base_dir, project_id, event_id)
         .await?
         .0)
+}
+
+pub async fn read_minidump_for_project(
+    base_dir: &Path,
+    project_id: i32,
+    event_id: &str,
+) -> AppResult<Option<Vec<u8>>> {
+    let path = get_project_pending_event_path(base_dir, project_id, event_id)?;
+    let Some(bytes) = read_if_present(&path).await? else {
+        return Ok(None);
+    };
+    let record: PendingEventRecord = serde_json::from_slice(&bytes)
+        .map_err(|e| AppError::Internal(format!("Invalid pending event: {e}")))?;
+    if record.version != PENDING_EVENT_VERSION
+        || record.metadata.project_id != project_id
+        || !same_event_id(&record.metadata.event_id, event_id)
+    {
+        return Err(AppError::Internal(
+            "Native event identity mismatch".to_owned(),
+        ));
+    }
+    record
+        .minidump
+        .map(|encoded| {
+            STANDARD
+                .decode(encoded)
+                .map_err(|e| AppError::Internal(format!("Invalid minidump encoding: {e}")))
+        })
+        .transpose()
 }
 
 /// Deletes an event from the legacy filesystem path.
@@ -949,6 +1012,7 @@ mod tests {
             version: 2,
             metadata: metadata(event_id, 7),
             event_data: STANDARD.encode(b"{}"),
+            minidump: None,
         };
         fs::create_dir_all(dir.path()).await.unwrap();
         fs::write(&pending_path, serde_json::to_vec(&record).unwrap())
@@ -1146,6 +1210,7 @@ mod tests {
             version: PENDING_EVENT_VERSION,
             metadata: metadata(event_id, 7),
             event_data: "not-base64".to_string(),
+            minidump: None,
         };
         fs::write(&pending_path, serde_json::to_vec(&malformed).unwrap())
             .await
@@ -1301,6 +1366,7 @@ mod tests {
             version: PENDING_EVENT_VERSION,
             metadata: metadata.clone(),
             event_data: STANDARD.encode(br"{}"),
+            minidump: None,
         };
         fs::write(&legacy_path, serde_json::to_vec(&record).unwrap())
             .await

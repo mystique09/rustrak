@@ -240,7 +240,7 @@ impl AssemblyWorker {
                 .await?;
             for checksum in owned_checksums {
                 sqlx::query(
-                    "DELETE FROM chunk WHERE checksum = $1 AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks WHERE checksum = $1)",
+                    "DELETE FROM chunk WHERE checksum = $1 AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks WHERE checksum = $1) AND NOT EXISTS (SELECT 1 FROM native_chunk_owner WHERE checksum = $1)",
                 )
                 .bind(checksum)
                 .execute(&mut *tx)

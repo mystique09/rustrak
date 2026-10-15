@@ -25,6 +25,21 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    #[cfg(feature = "native")]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--native-worker")) {
+        let paths: Vec<_> = std::env::args_os().skip(2).collect();
+        if paths.len() != 2 {
+            return Err(std::io::Error::other(
+                "native worker requires request and response paths",
+            ));
+        }
+        return rustrak::native::worker::run(
+            std::path::Path::new(&paths[0]),
+            std::path::Path::new(&paths[1]),
+        )
+        .await
+        .map_err(std::io::Error::other);
+    }
     // Load .env file if present
     dotenvy::dotenv().ok();
 
@@ -264,15 +279,36 @@ async fn main() -> std::io::Result<()> {
 
     // Processor registry — single dispatch surface for the ingest pipeline.
     // Built once; each processor owns the deps it needs.
-    let processors_data = web::Data::new(
-        rustrak::digest::processors::Processors::new(
-            ingest_dir.clone(),
-            config.rate_limit.clone(),
-            Arc::clone(&sourcemap_provider),
-            Some(session_aggregator.clone()),
-        )
-        .with_dashboard_url(config.dashboard_url()),
-    );
+    #[cfg(feature = "native")]
+    let native = Arc::new(rustrak::native::NativeService::new(
+        std::env::var_os("NATIVE_STORAGE_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("/data/native")),
+        std::env::current_exe()?,
+    ));
+    #[cfg(feature = "native")]
+    {
+        let pool = db_pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                if let Err(error) = rustrak::native::NativeService::expire_uploads(&pool).await {
+                    log::warn!("Native upload cleanup failed: {error}");
+                }
+            }
+        });
+    }
+    let processors = rustrak::digest::processors::Processors::new(
+        ingest_dir.clone(),
+        config.rate_limit.clone(),
+        Arc::clone(&sourcemap_provider),
+        Some(session_aggregator.clone()),
+    )
+    .with_dashboard_url(config.dashboard_url());
+    #[cfg(feature = "native")]
+    let processors = processors.with_native(Arc::clone(&native));
+    let processors_data = web::Data::new(processors);
 
     // Recovery is a background worker: a large backlog or a temporarily
     // unavailable database must not prevent the HTTP listener from binding.
@@ -387,12 +423,21 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::alerts::configure_channels)
             // Source map upload routes (Bearer auth, Sentry-cli compatible)
             .configure(routes::sourcemaps::configure)
+            .configure(|cfg| {
+                #[cfg(feature = "native")]
+                routes::native::configure(cfg);
+                #[cfg(not(feature = "native"))]
+                let _ = cfg;
+            })
             // Storage usage + retention/cleanup (admin only)
             .configure(routes::storage::configure)
             // What the anonymous telemetry would send (admin only)
             .configure(routes::telemetry::configure)
             // Ingest routes (Sentry SDK auth)
             .configure(routes::ingest::configure);
+
+        #[cfg(feature = "native")]
+        let app = app.app_data(web::Data::new(Arc::clone(&native)));
 
         #[cfg(feature = "openapi")]
         let app = {

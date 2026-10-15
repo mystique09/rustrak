@@ -83,6 +83,7 @@ pub async fn chunk_upload_capability(
     path: web::Path<String>,
     _actor: ApiActor,
     config: web::Data<Config>,
+    _request: actix_web::HttpRequest,
 ) -> AppResult<HttpResponse> {
     let org_slug = path.into_inner();
 
@@ -92,7 +93,7 @@ pub async fn chunk_upload_capability(
         .unwrap_or_else(|| format!("http://{}:{}", config.host, config.port));
 
     let chunk_size = config.max_chunk_size_bytes as u64;
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    let capabilities = serde_json::json!({
         "url": format!("{}/api/0/organizations/{}/chunk-upload/", base_url, org_slug),
         "chunkSize": chunk_size,
         "chunksPerRequest": 64u64,
@@ -104,7 +105,28 @@ pub async fn chunk_upload_capability(
         // plugins use; it rejects the response without it. Empty means chunks
         // are sent uncompressed, which is what `chunk_upload` reads.
         "compression": []
-    })))
+    });
+    #[cfg(feature = "native")]
+    let capabilities = {
+        let mut capabilities = capabilities;
+        if _request
+            .app_data::<web::Data<Arc<crate::native::NativeService>>>()
+            .is_some()
+        {
+            capabilities["accept"] = serde_json::json!([
+                "release_files",
+                "sources",
+                "artifact_bundles",
+                "artifact_bundles_v2",
+                "debug_files",
+                "pdbs"
+            ]);
+            capabilities["maxFileSize"] = serde_json::json!(crate::native::MAX_SYMBOL_SIZE);
+            capabilities["maxWait"] = serde_json::json!(120);
+        }
+        capabilities
+    };
+    Ok(HttpResponse::Ok().json(capabilities))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -195,7 +217,14 @@ pub async fn chunk_upload(
         ));
     }
 
+    #[cfg(feature = "native")]
+    let native_hashes: Vec<_> = parts.iter().map(|(hash, _)| hash.clone()).collect();
     store_chunks(pool.get_ref(), parts, max_chunk_size).await?;
+    #[cfg(feature = "native")]
+    for checksum in native_hashes {
+        sqlx::query("INSERT INTO native_chunk_owner (checksum,actor,expires_at) VALUES ($1,$2,$3) ON CONFLICT (checksum,actor) DO UPDATE SET expires_at=$3")
+            .bind(checksum).bind(crate::routes::native::actor_key(&_actor)).bind(chrono::Utc::now().timestamp()+86400).execute(pool.get_ref()).await?;
+    }
 
     Ok(HttpResponse::Ok().finish())
 }

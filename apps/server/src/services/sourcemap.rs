@@ -797,7 +797,7 @@ async fn assemble_bundle_inner(
 
     #[cfg(feature = "postgres")]
     sqlx::query(
-        "DELETE FROM chunk c WHERE c.checksum = ANY($1) AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks r WHERE r.checksum = c.checksum)",
+        "DELETE FROM chunk c WHERE c.checksum = ANY($1) AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks r WHERE r.checksum = c.checksum) AND NOT EXISTS (SELECT 1 FROM native_chunk_owner n WHERE n.checksum = c.checksum)",
     )
         .bind(chunk_checksums)
         .execute(&mut *tx)
@@ -812,7 +812,7 @@ async fn assemble_bundle_inner(
             for c in chunk_checksums {
                 sep.push_bind(c);
             }
-            qb.push(") AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks r WHERE r.checksum = chunk.checksum)");
+            qb.push(") AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks r WHERE r.checksum = chunk.checksum) AND NOT EXISTS (SELECT 1 FROM native_chunk_owner n WHERE n.checksum = chunk.checksum)");
             qb.build().execute(&mut *tx).await?;
         }
     }

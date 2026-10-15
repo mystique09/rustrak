@@ -12,6 +12,8 @@ pub mod ingest;
 pub mod logging;
 pub mod middleware;
 pub mod models;
+#[cfg(feature = "native")]
+pub mod native;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 pub mod pagination;

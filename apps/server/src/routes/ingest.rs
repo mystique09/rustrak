@@ -12,8 +12,8 @@ use crate::digest::processors::{
 use crate::error::{AppError, AppResult};
 use crate::ingest::storage::{is_missing_event_file, list_pending_event_metadata_except};
 use crate::ingest::{
-    decompress_body, detach_payload_if_needed, get_content_encoding, store_event_with_metadata,
-    EnvelopeItemKind, EnvelopeParser, EventMetadata, MAX_COMPRESSED_SIZE,
+    decompress_body, detach_payload_if_needed, get_content_encoding, EnvelopeItemKind,
+    EnvelopeParser, EventMetadata, MAX_COMPRESSED_SIZE,
 };
 use crate::services::RateLimitService;
 
@@ -102,6 +102,7 @@ pub async fn ingest_envelope(
     //    event_id validation is deferred until after the loop — session-only envelopes never need
     //    one (Relay: Item::requires_event() returns false for Session/Sessions).
     let mut event_item: Option<Bytes> = None;
+    let mut minidump: Option<Bytes> = None;
     let mut transaction_item: Option<Bytes> = None;
     let mut span_items: Vec<Bytes> = Vec::new();
     let mut span_v2_items: Vec<Bytes> = Vec::new();
@@ -113,6 +114,19 @@ pub async fn ingest_envelope(
             requires_event_id = true;
         }
         match item_kind {
+            EnvelopeItemKind::Minidump(payload) => {
+                if minidump.is_some() {
+                    return Err(AppError::Validation(
+                        "Only one minidump is allowed per envelope".to_owned(),
+                    ));
+                }
+                if !processors.errors.native_enabled() {
+                    return Err(AppError::Validation(
+                        "Native crash processing is not enabled on this server".to_owned(),
+                    ));
+                }
+                minidump = Some(detach_payload_if_needed(payload, envelope_len));
+            }
             EnvelopeItemKind::Event(p) => {
                 if event_item.is_none() {
                     event_item = Some(detach_payload_if_needed(p, envelope_len));
@@ -255,6 +269,10 @@ pub async fn ingest_envelope(
     // Return for session-only and other non-event envelopes.
     let event_item = match event_item {
         Some(item) => item,
+        None if minidump.is_some() => Bytes::from(
+            serde_json::to_vec(&serde_json::json!({"event_id":event_id,"platform":"native"}))
+                .map_err(|e| AppError::Internal(e.to_string()))?,
+        ),
         None => {
             log::debug!("No event item in envelope");
             return Ok(HttpResponse::Ok().json(IngestResponse { id: event_id }));
@@ -283,11 +301,12 @@ pub async fn ingest_envelope(
         .errors
         .in_flight()
         .register(auth.project.id, event_uuid);
-    store_event_with_metadata(
+    crate::ingest::storage::store_event_with_minidump(
         processors.errors.ingest_dir(),
         &event_id,
         &event_item,
         &metadata,
+        minidump.as_deref(),
     )
     .await?;
 

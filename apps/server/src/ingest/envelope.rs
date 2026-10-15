@@ -42,6 +42,7 @@ pub struct ItemHeaders {
 
     /// Content type of the payload
     pub content_type: Option<String>,
+    pub attachment_type: Option<String>,
 }
 
 /// Typed representation of a parsed envelope item.
@@ -73,6 +74,7 @@ pub enum EnvelopeItemKind {
     /// carry many spans. Modern Sentry SDKs (verified: `@sentry/node` 10.65 +
     /// Vercel AI SDK) send AI-instrumented spans this way, not as `Span`.
     SpanV2Batch(Bytes),
+    Minidump(Bytes),
     Other(String, Bytes),
 }
 
@@ -81,7 +83,7 @@ impl EnvelopeItemKind {
     /// Mirrors Relay's `Item::requires_event()`.
     pub fn requires_event(&self) -> bool {
         match self {
-            Self::Event(_) | Self::Transaction(_) => true,
+            Self::Event(_) | Self::Transaction(_) | Self::Minidump(_) => true,
             Self::Other(t, _) if t == "attachment" || t == "security" => true,
             _ => false,
         }
@@ -97,6 +99,9 @@ impl From<(ItemHeaders, Bytes)> for EnvelopeItemKind {
     fn from((headers, payload): (ItemHeaders, Bytes)) -> Self {
         match headers.item_type.as_str() {
             "event" => Self::Event(payload),
+            "attachment" if headers.attachment_type.as_deref() == Some("event.minidump") => {
+                Self::Minidump(payload)
+            }
             "transaction" => Self::Transaction(payload),
             "log" => Self::Log(payload),
             "span" => {

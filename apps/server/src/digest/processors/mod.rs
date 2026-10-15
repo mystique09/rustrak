@@ -186,6 +186,12 @@ pub struct Processors {
 }
 
 impl Processors {
+    #[cfg(feature = "native")]
+    pub fn with_native(mut self, native: Arc<crate::native::NativeService>) -> Self {
+        self.errors = self.errors.with_native(native);
+        self
+    }
+
     pub fn new(
         ingest_dir: PathBuf,
         rate_limit_config: RateLimitConfig,
@@ -271,7 +277,7 @@ pub enum Route {
 /// without a route arm is a build error, never a silent drop.
 pub fn route(item: &EnvelopeItemKind) -> Route {
     match item {
-        EnvelopeItemKind::Event(_) => Route::Error,
+        EnvelopeItemKind::Event(_) | EnvelopeItemKind::Minidump(_) => Route::Error,
         EnvelopeItemKind::Transaction(_) => Route::Transaction,
         EnvelopeItemKind::Session(_) | EnvelopeItemKind::Sessions(_) => Route::Session,
         EnvelopeItemKind::Log(_) => Route::Log,

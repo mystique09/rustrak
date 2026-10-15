@@ -10,6 +10,8 @@ pub mod issues;
 pub mod logs;
 pub mod members;
 pub mod metrics;
+#[cfg(feature = "native")]
+pub mod native;
 pub mod period;
 pub mod projects;
 pub mod releases;

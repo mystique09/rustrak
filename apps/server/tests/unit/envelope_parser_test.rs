@@ -9,6 +9,7 @@ use rustrak::ingest::parser::EnvelopeParser;
 fn item_type(kind: &EnvelopeItemKind) -> &str {
     match kind {
         EnvelopeItemKind::Event(_) => "event",
+        EnvelopeItemKind::Minidump(_) => "attachment",
         EnvelopeItemKind::Transaction(_) => "transaction",
         EnvelopeItemKind::Session(_) => "session",
         EnvelopeItemKind::Sessions(_) => "sessions",
@@ -23,6 +24,7 @@ fn item_type(kind: &EnvelopeItemKind) -> &str {
 fn raw_payload(kind: &EnvelopeItemKind) -> Option<&[u8]> {
     match kind {
         EnvelopeItemKind::Event(p)
+        | EnvelopeItemKind::Minidump(p)
         | EnvelopeItemKind::Transaction(p)
         | EnvelopeItemKind::Log(p)
         | EnvelopeItemKind::Span(p)
@@ -351,6 +353,7 @@ fn test_attachment_and_security_items_require_event_id() {
     for item_type in ["attachment", "security"] {
         let kind = EnvelopeItemKind::from((
             ItemHeaders {
+                attachment_type: None,
                 item_type: item_type.to_string(),
                 length: None,
                 content_type: None,

@@ -13,6 +13,7 @@ use rustrak::ingest::parser::EnvelopeParser;
 #[test]
 fn test_enum_dispatch_transaction_maps_to_transaction_kind() {
     let headers = ItemHeaders {
+        attachment_type: None,
         item_type: "transaction".into(),
         length: None,
         content_type: None,
@@ -24,6 +25,7 @@ fn test_enum_dispatch_transaction_maps_to_transaction_kind() {
 #[test]
 fn test_enum_dispatch_event_maps_to_event_kind() {
     let headers = ItemHeaders {
+        attachment_type: None,
         item_type: "event".into(),
         length: None,
         content_type: None,
