@@ -381,6 +381,7 @@ pub async fn test_channel(
         },
         issue_url: "https://example.com/test".to_string(),
         actor: "Rustrak Test".to_string(),
+        event: None,
     };
 
     // Send test notification

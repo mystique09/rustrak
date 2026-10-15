@@ -28,7 +28,7 @@ jobs:
           cache-workspaces: |
             apps/server
             tests/native-smoke
-      - run: cargo test --locked --features native --lib --test native_crash_test --test project_import_test
+      - run: cargo test --locked --features native --lib --test native_crash_test --test project_import_test --test alert_event_context_test --test alert_cooldown_test
         working-directory: apps/server
       - run: cargo clippy --locked --features native --lib --bin rustrak -- -D warnings
         working-directory: apps/server
@@ -70,5 +70,5 @@ jobs:
         with:
           toolchain: '1.98'
           cache-workspaces: apps/server
-      - run: cargo test --locked --no-default-features --features postgres,native --test native_crash_test --test project_import_test
+      - run: cargo test --locked --no-default-features --features postgres,native --test native_crash_test --test project_import_test --test alert_event_context_test --test alert_cooldown_test
         working-directory: apps/server

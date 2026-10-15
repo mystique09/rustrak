@@ -436,6 +436,26 @@ pub struct AlertPayload {
     pub issue_url: String,
     /// Actor that triggered the alert
     pub actor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<AlertEventInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertEventInfo {
+    pub id: String,
+    pub url: String,
+    pub timestamp: DateTime<Utc>,
+    pub release: String,
+    pub environment: String,
+    pub level: String,
+    pub platform: String,
+    pub operating_system: String,
+    pub architecture: String,
+    pub exception: String,
+    pub mechanism: String,
+    pub handled: Option<bool>,
+    pub stacktrace: String,
+    pub symbolication: String,
 }
 
 /// Project information for alert payload

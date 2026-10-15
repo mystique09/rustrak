@@ -207,8 +207,25 @@ impl CustomWebhookNotifier {
             },
             issue_url: "https://rustrak.example/issues/sample".to_string(),
             actor: "Rustrak".to_string(),
+            event: Some(crate::models::alert::AlertEventInfo {
+                id: "00000000-0000-0000-0000-000000000000".into(),
+                url: "https://rustrak.example/projects/1/issues/sample/events/sample".into(),
+                timestamp: now,
+                release: "sample@1.2.3".into(),
+                environment: "production".into(),
+                level: "fatal".into(),
+                platform: "native".into(),
+                operating_system: "Windows 11".into(),
+                architecture: "x86_64".into(),
+                exception: "AccessViolation: invalid read".into(),
+                mechanism: "minidump".into(),
+                handled: Some(false),
+                stacktrace: "sample_function (sample.rs:42)".into(),
+                symbolication: "1/1 displayed native frames resolved".into(),
+            }),
         };
         let without_level = AlertPayload {
+            event: None,
             issue: crate::models::IssueInfo {
                 level: None,
                 ..full.issue.clone()
@@ -460,6 +477,7 @@ mod tests {
             },
             issue_url: "https://example.com/issues/abc-123".to_string(),
             actor: "Rustrak".to_string(),
+            event: None,
         }
     }
 

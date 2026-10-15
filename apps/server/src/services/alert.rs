@@ -490,7 +490,7 @@ impl AlertService {
             issue,
             alert_type,
             dashboard_url,
-            Some(event_alert_id(project.id, event_id, &alert_type)),
+            Some(event_id),
         )
         .await
     }
@@ -580,7 +580,7 @@ impl AlertService {
         issue: &Issue,
         alert_type: AlertType,
         dashboard_url: &str,
-        stable_alert_id: Option<String>,
+        event_id: Option<Uuid>,
     ) -> AppResult<()> {
         // 1. Find enabled rule for this project and alert type
         let rule: Option<AlertRule> = sqlx::query_as(
@@ -632,16 +632,30 @@ impl AlertService {
             channels.push((rule_channel, integration));
         }
 
+        let event = match event_id {
+            Some(id) => sqlx::query_as::<_, crate::models::Event>(
+                "SELECT * FROM events WHERE project_id = $1 AND issue_id = $2 AND event_id = $3",
+            )
+            .bind(project.id)
+            .bind(issue.id)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?,
+            None => None,
+        };
+
         // 3. Build payload
         let payload = AlertPayload {
-            alert_id: stable_alert_id.unwrap_or_else(|| {
-                format!(
-                    "{}-{}-{}",
-                    project.id,
-                    issue.id,
-                    Utc::now().timestamp_millis()
-                )
-            }),
+            alert_id: event_id
+                .map(|id| event_alert_id(project.id, id, &alert_type))
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}-{}-{}",
+                        project.id,
+                        issue.id,
+                        Utc::now().timestamp_millis()
+                    )
+                }),
             alert_type: alert_type.to_string(),
             triggered_at: Utc::now(),
             project: ProjectInfo {
@@ -660,6 +674,9 @@ impl AlertService {
             },
             issue_url: Self::build_issue_url(dashboard_url, project.id, issue.id),
             actor: "Rustrak".to_string(),
+            event: event
+                .as_ref()
+                .map(|event| crate::services::alert_context::summarize(event, dashboard_url)),
         };
 
         log::info!(

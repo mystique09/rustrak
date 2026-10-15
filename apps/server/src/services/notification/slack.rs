@@ -406,6 +406,7 @@ mod tests {
             },
             issue_url: "https://example.com/issues/abc-123".to_string(),
             actor: "Rustrak".to_string(),
+            event: None,
         }
     }
 
