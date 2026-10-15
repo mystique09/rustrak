@@ -121,6 +121,8 @@ def main():
                 assert matched, f"Missing {function}: {frames}"
                 assert any(frame.get("lineno", 0) > 0 and frame.get("filename", "").endswith("main.rs") for frame in matched), matched
                 assert any(frame.get("context_line") for frame in matched), f"Missing uploaded source context: {matched}"
+                if platform.system() == "Windows":
+                    assert any(frame.get("trust") == "cfi" for frame in matched), f"Windows caller must use uploaded unwind data: {matched}"
             summary = {"os": platform.platform(), "architecture": platform.machine(),
                        "server_sha256": hashlib.sha256(server_binary.read_bytes()).hexdigest(),
                        "client_sha256": hashlib.sha256(client_binary.read_bytes()).hexdigest(),

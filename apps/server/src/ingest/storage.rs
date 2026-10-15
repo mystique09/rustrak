@@ -1301,6 +1301,7 @@ mod tests {
             version: PENDING_EVENT_VERSION,
             metadata: metadata(event_id, 7),
             event_data: STANDARD.encode(br#"{"outside":true}"#),
+            minidump: None,
         };
         let old_bytes = serde_json::to_vec(&old_record).unwrap();
 

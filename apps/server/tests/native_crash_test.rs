@@ -157,6 +157,28 @@ mod native {
             let report = processing::stackwalk(&fixture(&format!("{os}.dmp")), &symbols)
                 .await
                 .unwrap();
+            if symbol_file.is_some() {
+                assert!(
+                    report["threads"].as_array().unwrap().iter().any(|thread| {
+                        thread["frames"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .any(|frame| frame["trust"] == "cfi")
+                    }),
+                    "{os}: uploaded unwind information must walk caller frames"
+                );
+                assert!(
+                    report["threads"].as_array().unwrap().iter().any(|thread| {
+                        thread["frames"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .any(|frame| frame["function"].is_string())
+                    }),
+                    "{os}: symbols must also be available while walking the stack"
+                );
+            }
             let mut event = json!({"event_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","release":"qa@1","tags":{"test":"native"},"breadcrumbs":[{"message":"before crash"}],"contexts":{"device":{"name":"QA"}}});
             let original = event.clone();
             processing::merge_report(&mut event, &report).unwrap();
@@ -306,7 +328,10 @@ mod native {
     async fn upload_auth_checksums_deduplication_and_chunk_ownership() {
         use actix_web::{http::StatusCode, test, web, App};
         use rustrak::{
-            config::Config,
+            config::{
+                Config, DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig,
+                TelemetryConfig,
+            },
             models::{CreateAuthToken, CreateProject, ProjectRole, UserRole},
             routes,
             services::{AuthTokenService, ProjectMemberService, ProjectService, UsersService},
@@ -355,6 +380,44 @@ mod native {
             );
         }
         let directory = tempfile::tempdir().unwrap();
+        let config = Config {
+            host: "127.0.0.1".into(),
+            port: 0,
+            database: DatabaseConfig {
+                url: "unused".into(),
+                max_connections: 1,
+                min_connections: 1,
+                acquire_timeout: std::time::Duration::from_secs(5),
+                idle_timeout: std::time::Duration::from_secs(60),
+                max_lifetime: std::time::Duration::from_secs(300),
+            },
+            rate_limit: RateLimitConfig {
+                max_events_per_minute: 1000,
+                max_events_per_hour: 10000,
+                max_events_per_project_per_minute: 500,
+                max_events_per_project_per_hour: 5000,
+            },
+            security: SecurityConfig {
+                ssl_proxy: false,
+                session_secret_key: None,
+            },
+            ingest_dir: None,
+            public_url: None,
+            sourcemap_storage_path: directory.path().to_string_lossy().into_owned(),
+            sourcemap_cache_bytes: 64 * 1024 * 1024,
+            max_chunk_size_bytes: 10 * 1024 * 1024,
+            session_flush_interval_secs: 30,
+            session_cardinality_cap: 10000,
+            dashboard: DashboardConfig {
+                dir: "./static".into(),
+                enabled: false,
+                url: None,
+            },
+            telemetry: TelemetryConfig {
+                enabled: false,
+                do_not_track: true,
+            },
+        };
         let service = Arc::new(NativeService::new(
             directory.path().to_path_buf(),
             env!("CARGO_BIN_EXE_rustrak").into(),
@@ -362,7 +425,7 @@ mod native {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(db.pool.clone()))
-                .app_data(web::Data::new(Config::from_env().unwrap()))
+                .app_data(web::Data::new(config))
                 .app_data(web::Data::new(service.clone()))
                 .configure(routes::sourcemaps::configure)
                 .configure(routes::native::configure),

@@ -1,7 +1,10 @@
 use std::{collections::HashMap, fs, path::Path};
 
 use minidump::{Minidump, MinidumpModuleList, MinidumpSystemInfo, Module};
-use minidump_unwind::{simple_symbol_supplier, Symbolizer};
+use minidump_unwind::{
+    simple_symbol_supplier, FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker,
+    SymbolProvider, Symbolizer,
+};
 use serde_json::{json, Value};
 use symbolic::{
     debuginfo::Archive,
@@ -10,6 +13,69 @@ use symbolic::{
 };
 
 use crate::native::{address, normalize_debug_id, symbols::NativeResult, SymbolInput};
+
+type SymbolCaches = HashMap<(String, String), Vec<u8>>;
+
+fn symbol_arch(architecture: &str) -> &str {
+    match architecture {
+        "amd64" => "x86_64",
+        "aarch64" => "arm64",
+        other => other,
+    }
+}
+
+struct NativeSymbolProvider {
+    unwind: Symbolizer,
+    caches: SymbolCaches,
+    architecture: String,
+}
+
+#[async_trait::async_trait]
+impl SymbolProvider for NativeSymbolProvider {
+    async fn fill_symbol(
+        &self,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> Result<(), FillSymbolError> {
+        let id = module.debug_identifier().ok_or(FillSymbolError {})?;
+        let bytes = self
+            .caches
+            .get(&(id.to_string(), self.architecture.clone()))
+            .ok_or(FillSymbolError {})?;
+        let cache = SymCache::parse(bytes).map_err(|_| FillSymbolError {})?;
+        let relative = frame
+            .get_instruction()
+            .checked_sub(module.base_address())
+            .ok_or(FillSymbolError {})?;
+        if let Some(location) = cache.lookup(relative).last() {
+            let function = location.function();
+            frame.set_function(
+                function.name(),
+                module
+                    .base_address()
+                    .saturating_add(u64::from(function.entry_pc())),
+                0,
+            );
+        }
+        Ok(())
+    }
+
+    async fn walk_frame(
+        &self,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalker + Send),
+    ) -> Option<()> {
+        self.unwind.walk_frame(module, walker).await
+    }
+
+    async fn get_file_path(
+        &self,
+        module: &(dyn Module + Sync),
+        kind: FileKind,
+    ) -> Result<std::path::PathBuf, FileError> {
+        self.unwind.get_file_path(module, kind).await
+    }
+}
 
 pub fn module_ids(path: &Path) -> NativeResult<Vec<String>> {
     let dump = Minidump::read_path(path)?;
@@ -29,7 +95,8 @@ pub async fn stackwalk(path: &Path, symbols: &[SymbolInput]) -> NativeResult<Val
     let dump = Minidump::read_path(path)?;
     let modules: MinidumpModuleList = dump.get_stream()?;
     let directory = tempfile::tempdir()?;
-    let architecture = dump.get_stream::<MinidumpSystemInfo>()?.cpu.to_string();
+    let architecture =
+        symbol_arch(&dump.get_stream::<MinidumpSystemInfo>()?.cpu.to_string()).to_owned();
     for module in modules.iter() {
         let Some(id) = module.debug_identifier() else {
             continue;
@@ -66,11 +133,19 @@ pub async fn stackwalk(path: &Path, symbols: &[SymbolInput]) -> NativeResult<Val
         let base = directory.path().join(name).join(id.breakpad().to_string());
         fs::create_dir_all(&base)?;
         let basename = name.strip_suffix(".pdb").unwrap_or(name);
-        let mut bytes = format!("MODULE unknown {arch} {} {name}\n", id.breakpad()).into_bytes();
+        let mut bytes = if cfi.starts_with(b"MODULE ") {
+            Vec::new()
+        } else {
+            format!("MODULE unknown {arch} {} {name}\n", id.breakpad()).into_bytes()
+        };
         bytes.extend_from_slice(&cfi);
         fs::write(base.join(format!("{basename}.sym")), bytes)?;
     }
-    let provider = Symbolizer::new(simple_symbol_supplier(vec![directory.path().to_path_buf()]));
+    let provider = NativeSymbolProvider {
+        unwind: Symbolizer::new(simple_symbol_supplier(vec![directory.path().to_path_buf()])),
+        caches: load_caches(symbols)?,
+        architecture,
+    };
     let state = minidump_processor::process_minidump(&dump, &provider).await?;
     let mut bytes = Vec::new();
     state.print_json(&mut bytes, false)?;
@@ -175,12 +250,7 @@ pub fn merge_report(event: &mut Value, report: &Value) -> NativeResult<()> {
     Ok(())
 }
 
-pub fn symbolize(event: &mut Value, symbols: &[SymbolInput]) -> NativeResult<()> {
-    let images = event
-        .pointer("/debug_meta/images")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+fn load_caches(symbols: &[SymbolInput]) -> NativeResult<SymbolCaches> {
     let mut cache_bytes = HashMap::new();
     let mut ranked_symbols: Vec<_> = symbols.iter().collect();
     ranked_symbols.sort_by_key(|symbol| {
@@ -205,6 +275,16 @@ pub fn symbolize(event: &mut Value, symbols: &[SymbolInput]) -> NativeResult<()>
             Err(e) => return Err(e.into()),
         }
     }
+    Ok(cache_bytes)
+}
+
+pub fn symbolize(event: &mut Value, symbols: &[SymbolInput]) -> NativeResult<()> {
+    let images = event
+        .pointer("/debug_meta/images")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let cache_bytes = load_caches(symbols)?;
     let event_arch = event
         .pointer("/contexts/device/arch")
         .and_then(Value::as_str)
@@ -235,7 +315,7 @@ fn resolve_frames(
     frames: &mut Vec<Value>,
     images: &[Value],
     event_arch: &str,
-    cache_bytes: &HashMap<(String, String), Vec<u8>>,
+    cache_bytes: &SymbolCaches,
     symbols: &[SymbolInput],
 ) -> NativeResult<()> {
     let mut replacements = Vec::new();
@@ -264,11 +344,7 @@ fn resolve_frames(
             continue;
         };
         let arch = image["arch"].as_str().unwrap_or(event_arch);
-        let arch = match arch {
-            "amd64" => "x86_64",
-            "aarch64" => "arm64",
-            other => other,
-        };
+        let arch = symbol_arch(arch);
         let mut matches = cache_bytes.iter().filter(|((debug_id, cache_arch), _)| {
             debug_id == &id && (arch.is_empty() || cache_arch == arch)
         });
